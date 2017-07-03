@@ -9,7 +9,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	sparta "github.com/mweagle/Sparta"
 	spartaCF "github.com/mweagle/Sparta/aws/cloudformation"
-	spartaCGO "github.com/mweagle/Sparta/cgo"
 	gocf "github.com/mweagle/go-cloudformation"
 )
 
@@ -18,8 +17,7 @@ func helloWorld(event *json.RawMessage,
 	context *sparta.LambdaContext,
 	w http.ResponseWriter,
 	logger *logrus.Logger) {
-
-	fmt.Fprint(w, "Hello World 🌍")
+	fmt.Fprint(w, "Hello XRay World ☢️")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,6 +32,7 @@ func main() {
 			Name: "SpartaXRay",
 		},
 	}
+	// Add tags
 	lambdaOptions.Tags = map[string]string{"special": "tag"}
 	lambdaFn := sparta.NewLambda(sparta.IAMRoleDefinition{},
 		helloWorld,
@@ -43,7 +42,7 @@ func main() {
 	stackName := spartaCF.UserScopedStackName("SpartaXRay")
 	var lambdaFunctions []*sparta.LambdaAWSInfo
 	lambdaFunctions = append(lambdaFunctions, lambdaFn)
-	err := spartaCGO.Main(stackName,
+	err := sparta.Main(stackName,
 		stackName,
 		lambdaFunctions,
 		nil,
