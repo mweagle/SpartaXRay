@@ -1,15 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 
-	"github.com/Sirupsen/logrus"
 	sparta "github.com/mweagle/Sparta"
 	spartaCF "github.com/mweagle/Sparta/aws/cloudformation"
+	spartaDecorator "github.com/mweagle/Sparta/decorator"
 	gocf "github.com/mweagle/go-cloudformation"
+	"github.com/sirupsen/logrus"
 )
 
 // Standard AWS λ function
@@ -24,18 +26,16 @@ func xRaySampleFunctions() []*sparta.LambdaAWSInfo {
 	// Default options for all lambda functions
 	sampleFunctions := make([]*sparta.LambdaAWSInfo, 0)
 
-	lambdaMaker := func(xRayIndex int) sparta.LambdaFunction {
-		return func(event *json.RawMessage,
-			context *sparta.LambdaContext,
-			w http.ResponseWriter,
-			logger *logrus.Logger) {
-			fmt.Fprintf(w, "Hello World from XRay %d: ☢️", xRayIndex)
+	lambdaMaker := func(xRayIndex int) interface{} {
+		return func(ctx context.Context) (string, error) {
+			return fmt.Sprintf("Hello World from XRay %d: ☢️", xRayIndex), nil
 		}
 	}
 
 	// Create 6 functions
 	for i := 0; i != 6; i++ {
 		lambdaOptions := &sparta.LambdaFunctionOptions{
+			Timeout:    10,
 			MemorySize: 256,
 			TracingConfig: &gocf.LambdaFunctionTracingConfig{
 				Mode: gocf.String("Active"),
@@ -47,9 +47,14 @@ func xRaySampleFunctions() []*sparta.LambdaAWSInfo {
 				Name: fmt.Sprintf("XRaySampleFunction%d", i),
 			},
 		}
-		lambdaFn := sparta.NewLambda(sparta.IAMRoleDefinition{},
-			lambdaMaker(i),
-			lambdaOptions)
+		lambdaHandler := lambdaMaker(i)
+		lambdaFn, lambdaFnErr := sparta.NewAWSLambda(fmt.Sprintf("XRayHandler%d", i),
+			lambdaHandler,
+			sparta.IAMRoleDefinition{})
+		if lambdaFnErr != nil {
+			panic(lambdaFnErr.Error())
+		}
+		lambdaFn.Options = lambdaOptions
 		sampleFunctions = append(sampleFunctions, lambdaFn)
 	}
 	return sampleFunctions
@@ -66,7 +71,9 @@ func main() {
 
 	// Setup the DashboardDecorator lambda hook
 	workflowHooks := &sparta.WorkflowHooks{
-		ServiceDecorator: sparta.DashboardDecorator(lambdaFunctions, 60),
+		ServiceDecorators: []sparta.ServiceDecoratorHookHandler{
+			spartaDecorator.DashboardDecorator(lambdaFunctions, 60),
+		},
 	}
 
 	err := sparta.MainEx(stackName,
